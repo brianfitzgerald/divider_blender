@@ -13,6 +13,8 @@
 
 import bpy
 from bpy.props import IntProperty, PointerProperty
+import mathutils
+import bmesh
 
 bl_info = {
     "name" : "Divider",
@@ -26,9 +28,53 @@ bl_info = {
 }
 
 def main(context):
-    for ob in context.scene.objects:
-        print(ob)
+    obj = context.object
+    verts = [vert.co for vert in obj.data.vertices]
+    new_verts = []
+    x = 0.5
+    y = 0.5
+    if bpy.context.mode == 'EDIT_MESH':
+        bm = bmesh.from_edit_mesh(obj.data)
+    else:
+        bm = bmesh.new()
+        bm.from_object(obj, context.scene)
+    subdivide(bm, verts, 5, new_verts, x, y)
 
+
+def subdivide(bm, pv, level, new_verts, x, y):
+    level_verts = []
+    original_face = bm.faces[0]
+    if level == 0:
+        return
+    else:
+
+        pos_a = pv[0].lerp(pv[1], y)
+        pos_b = pv[1].lerp(pv[2], x)
+        pos_c = pv[3].lerp(pv[2], 1-y)
+        pos_d = pv[0].lerp(pv[3], x)
+
+        pos_e = pos_d.lerp(pos_b, y)
+        pos_f = pos_d.lerp(pos_b, 1-y)
+
+        new_points = {
+            "a": pos_a,
+            "b": pos_b,
+            "c": pos_c,
+            "d": pos_d,
+            "e": pos_e,
+            "f": pos_f
+        }
+        new_verts = {}
+
+        for i, (k, v) in enumerate(new_points):
+            new_verts[k] = bm.verts.new(v)
+
+        bm.faces.new([pv[0], new_verts["a"], new_verts["e"], new_verts["d"]])
+        bm.faces.new([new_verts["a"], pv[1], new_verts["b"], new_verts["e"]])
+        bm.faces.new([new_verts["b"], pv[2], new_verts["c"], new_verts["f"]])
+        bm.faces.new([new_verts["d"], new_verts["f"], new_verts["c"], pv[3]])
+
+        bmesh.ops.delete(bm, geom=original_face, context=5)
 
 class DividerOperator(bpy.types.Operator):
     bl_idname = "object.divider_operator"
@@ -69,7 +115,7 @@ class DividerPanel(bpy.types.Panel):
 class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
-        min=0,
+        min=1,
         max=1000
     )
 
