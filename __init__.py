@@ -27,25 +27,22 @@ bl_info = {
     "category" : "Generic"
 }
 
-def main(context):
+def main(context, num_subdivisions):
     obj = context.object
-    new_verts = []
-    x = 0.5
-    y = 0.5
+    x = 0.3
+    y = 0.3
     if bpy.context.mode == 'EDIT_MESH':
         bm = bmesh.from_edit_mesh(obj.data)
     else:
         bm = bmesh.new()
         bm.from_mesh(obj.data)
-    subdivide(obj, bm, obj.data.vertices, 1, new_verts, x, y)
+    subdivide(obj, bm, obj.data.vertices, num_subdivisions, x, y)
 
 
-def subdivide(obj, bm, pv, level, new_verts, x, y):
-    level_verts = []
+def subdivide(obj, bm, pv, level, x, y):
     pv_co = [vert.co for vert in pv]
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
-    original_face = bm.faces[0]
     if level == 0:
         return
     else:
@@ -54,6 +51,8 @@ def subdivide(obj, bm, pv, level, new_verts, x, y):
         pos_b = pv_co[1].lerp(pv_co[2], x)
         pos_c = pv_co[3].lerp(pv_co[2], 1-y)
         pos_d = pv_co[0].lerp(pv_co[3], x)
+
+        print(pos_a, pv_co[0], pv_co[1])
 
         pos_e = pos_d.lerp(pos_b, y)
         pos_f = pos_d.lerp(pos_b, 1-y)
@@ -73,13 +72,20 @@ def subdivide(obj, bm, pv, level, new_verts, x, y):
         new_verts = {}
 
         for key in new_points:
-            print(new_points[key])
             new_verts[key] = bm.verts.new(new_points[key])
+
         
-        bm.faces.new([new_verts["0"], new_verts["a"], new_verts["e"], new_verts["d"]])
-        bm.faces.new([new_verts["a"], new_verts["1"], new_verts["b"], new_verts["e"]])
-        bm.faces.new([new_verts["b"], new_verts["2"], new_verts["c"], new_verts["f"]])
-        bm.faces.new([new_verts["d"], new_verts["f"], new_verts["c"], new_verts["3"]])
+        faces = [
+            [new_verts["0"], new_verts["a"], new_verts["e"], new_verts["d"]],
+            [new_verts["a"], new_verts["1"], new_verts["b"], new_verts["e"]],
+            [new_verts["b"], new_verts["2"], new_verts["c"], new_verts["f"]],
+            [new_verts["d"], new_verts["f"], new_verts["c"], new_verts["3"]]
+        ]
+
+        for face in faces:
+            bm.faces.new(face)
+            print([f.co for f in face])
+            subdivide(obj, bm, face, level-1, x, y)
 
         bmesh.update_edit_mesh(obj.data)
 
@@ -90,8 +96,8 @@ class DividerOperator(bpy.types.Operator):
 
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
-        min=0,
-        max=1000
+        min=1,
+        max=50
     )
 
     @classmethod
@@ -99,7 +105,7 @@ class DividerOperator(bpy.types.Operator):
         return context.active_object is not None
 
     def execute(self, context):
-        main(context)
+        main(context, self.num_subdivisions)
         print(self.num_subdivisions)
         return {'FINISHED'}
 
