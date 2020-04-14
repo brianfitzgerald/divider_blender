@@ -29,7 +29,6 @@ bl_info = {
 
 def main(context):
     obj = context.object
-    verts = [vert.co for vert in obj.data.vertices]
     new_verts = []
     x = 0.5
     y = 0.5
@@ -37,21 +36,24 @@ def main(context):
         bm = bmesh.from_edit_mesh(obj.data)
     else:
         bm = bmesh.new()
-        bm.from_object(obj, context.scene)
-    subdivide(bm, verts, 5, new_verts, x, y)
+        bm.from_mesh(obj.data)
+    subdivide(obj, bm, obj.data.vertices, 1, new_verts, x, y)
 
 
-def subdivide(bm, pv, level, new_verts, x, y):
+def subdivide(obj, bm, pv, level, new_verts, x, y):
     level_verts = []
+    pv_co = [vert.co for vert in pv]
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
     original_face = bm.faces[0]
     if level == 0:
         return
     else:
 
-        pos_a = pv[0].lerp(pv[1], y)
-        pos_b = pv[1].lerp(pv[2], x)
-        pos_c = pv[3].lerp(pv[2], 1-y)
-        pos_d = pv[0].lerp(pv[3], x)
+        pos_a = pv_co[0].lerp(pv_co[1], y)
+        pos_b = pv_co[1].lerp(pv_co[2], x)
+        pos_c = pv_co[3].lerp(pv_co[2], 1-y)
+        pos_d = pv_co[0].lerp(pv_co[3], x)
 
         pos_e = pos_d.lerp(pos_b, y)
         pos_f = pos_d.lerp(pos_b, 1-y)
@@ -62,19 +64,25 @@ def subdivide(bm, pv, level, new_verts, x, y):
             "c": pos_c,
             "d": pos_d,
             "e": pos_e,
-            "f": pos_f
+            "f": pos_f,
+            "0": pv_co[0],
+            "1": pv_co[1],
+            "2": pv_co[2],
+            "3": pv_co[3],
         }
         new_verts = {}
 
-        for i, (k, v) in enumerate(new_points):
-            new_verts[k] = bm.verts.new(v)
+        for key in new_points:
+            print(new_points[key])
+            new_verts[key] = bm.verts.new(new_points[key])
+        
+        bm.faces.new([new_verts["0"], new_verts["a"], new_verts["e"], new_verts["d"]])
+        bm.faces.new([new_verts["a"], new_verts["1"], new_verts["b"], new_verts["e"]])
+        bm.faces.new([new_verts["b"], new_verts["2"], new_verts["c"], new_verts["f"]])
+        bm.faces.new([new_verts["d"], new_verts["f"], new_verts["c"], new_verts["3"]])
 
-        bm.faces.new([pv[0], new_verts["a"], new_verts["e"], new_verts["d"]])
-        bm.faces.new([new_verts["a"], pv[1], new_verts["b"], new_verts["e"]])
-        bm.faces.new([new_verts["b"], pv[2], new_verts["c"], new_verts["f"]])
-        bm.faces.new([new_verts["d"], new_verts["f"], new_verts["c"], pv[3]])
+        bmesh.update_edit_mesh(obj.data)
 
-        bmesh.ops.delete(bm, geom=original_face, context=5)
 
 class DividerOperator(bpy.types.Operator):
     bl_idname = "object.divider_operator"
