@@ -47,14 +47,18 @@ def subdivide(obj, bm, pv, level, x, y):
         return
     else:
 
-        pos_a = pv_co[0].lerp(pv_co[1], y)
-        pos_b = pv_co[1].lerp(pv_co[2], x)
-        pos_c = pv_co[3].lerp(pv_co[2], 1-y)
-        pos_d = pv_co[0].lerp(pv_co[3], x)
+        # pos x - top
+        pos_a = pv_co[2].lerp(pv_co[3], x)
+        # pos y - right
+        pos_b = pv_co[3].lerp(pv_co[1], y)
+        # neg x - bottom
+        pos_c = pv_co[0].lerp(pv_co[1], 1-x)
+        # neg y - left
+        pos_d = pv_co[2].lerp(pv_co[0], y)
 
-        print(pos_a, pv_co[0], pv_co[1])
-
+        
         pos_e = pos_d.lerp(pos_b, y)
+        # center
         pos_f = pos_d.lerp(pos_b, 1-y)
 
         new_points = {
@@ -76,10 +80,10 @@ def subdivide(obj, bm, pv, level, x, y):
 
         
         faces = [
-            [new_verts["0"], new_verts["a"], new_verts["e"], new_verts["d"]],
-            [new_verts["a"], new_verts["1"], new_verts["b"], new_verts["e"]],
-            [new_verts["b"], new_verts["2"], new_verts["c"], new_verts["f"]],
-            [new_verts["d"], new_verts["f"], new_verts["c"], new_verts["3"]]
+            [new_verts["0"], new_verts["c"], new_verts["f"], new_verts["d"]],
+            [new_verts["a"], new_verts["2"], new_verts["d"], new_verts["e"]],
+            [new_verts["e"], new_verts["b"], new_verts["3"], new_verts["a"]],
+            [new_verts["1"], new_verts["c"], new_verts["f"], new_verts["b"]]
         ]
 
         for face in faces:
