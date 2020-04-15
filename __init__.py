@@ -15,6 +15,7 @@ import bpy
 from bpy.props import IntProperty, PointerProperty
 import mathutils
 import bmesh
+import random
 
 bl_info = {
     "name" : "Divider",
@@ -27,45 +28,47 @@ bl_info = {
     "category" : "Generic"
 }
 
-def main(context, num_subdivisions):
+def main(context, num_subdivisions, rotate_amount, x_offset, y_offset):
     obj = context.object
-    x = 0.3
-    y = 0.3
     if bpy.context.mode == 'EDIT_MESH':
         bm = bmesh.from_edit_mesh(obj.data)
     else:
         bm = bmesh.new()
         bm.from_mesh(obj.data)
-    subdivide(obj, bm, obj.data.vertices, num_subdivisions, x, y)
-
-
-def subdivide(obj, bm, pv, level, x, y):
-    pv_co = [vert.co for vert in pv]
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
+    x = 0.5
+    y = 0.5
+    subdivide(bm, obj.data.vertices, num_subdivisions, x, y, rotate_amount)
+    bmesh.update_edit_mesh(obj.data)
+
+
+def subdivide(bm, pv, level, x, y, rotate_amount):
+    pv_co = [vert.co for vert in pv]
+    print('sub', pv_co, level)
     if level == 0:
         return
     else:
 
         # pos x - top
-        pos_a = pv_co[2].lerp(pv_co[3], x)
+        top = pv_co[2].lerp(pv_co[3], x)
         # pos y - right
-        pos_b = pv_co[3].lerp(pv_co[1], y)
+        right = pv_co[3].lerp(pv_co[1], y)
         # neg x - bottom
-        pos_c = pv_co[0].lerp(pv_co[1], 1-x)
+        bottom = pv_co[0].lerp(pv_co[1], 1-x)
         # neg y - left
-        pos_d = pv_co[2].lerp(pv_co[0], y)
+        left = pv_co[2].lerp(pv_co[0], y)
 
         
-        pos_e = pos_d.lerp(pos_b, y)
+        pos_e = left.lerp(right, y)
         # center
-        pos_f = pos_d.lerp(pos_b, 1-y)
+        pos_f = left.lerp(right, 1-y)
 
         new_points = {
-            "a": pos_a,
-            "b": pos_b,
-            "c": pos_c,
-            "d": pos_d,
+            "a": top,
+            "b": right,
+            "c": bottom,
+            "d": left,
             "e": pos_e,
             "f": pos_f,
             "0": pv_co[0],
@@ -80,18 +83,28 @@ def subdivide(obj, bm, pv, level, x, y):
 
         
         faces = [
+            # bottom left, bottom, center, left
             [new_verts["0"], new_verts["c"], new_verts["f"], new_verts["d"]],
-            [new_verts["a"], new_verts["2"], new_verts["d"], new_verts["e"]],
-            [new_verts["e"], new_verts["b"], new_verts["3"], new_verts["a"]],
-            [new_verts["1"], new_verts["c"], new_verts["f"], new_verts["b"]]
+            # [new_verts["a"], new_verts["2"], new_verts["d"], new_verts["e"]],
+            # [new_verts["e"], new_verts["b"], new_verts["3"], new_verts["a"]],
+            # [new_verts["1"], new_verts["c"], new_verts["f"], new_verts["b"]]
         ]
 
         for face in faces:
-            bm.faces.new(face)
-            print([f.co for f in face])
-            subdivide(obj, bm, face, level-1, x, y)
+            new_verts = bm.faces.new(face).verts
+            new_verts.index_update()
+            bm.verts.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+            print('iterating',rotate_amount, new_verts)
+            subdivide(bm, rotate(new_verts,rotate_amount), level-1, x, y, rotate_amount)
 
-        bmesh.update_edit_mesh(obj.data)
+def rotate(l, n): return l[n:] + l[:n]
+
+def sort(verts):
+    sorted = []
+    for x in range(len(verts)):
+        sorted.append(verts[len(verts)-x-1])
+    return sorted
 
 
 class DividerOperator(bpy.types.Operator):
@@ -104,13 +117,30 @@ class DividerOperator(bpy.types.Operator):
         max=50
     )
 
+    rotate_amount = bpy.props.IntProperty(
+        name="Rotate Amount",
+        min=0,
+        max=50
+    )
+
+    x_offset = bpy.props.FloatProperty(
+        name=" Offset",
+        min=0,
+        max=1
+    )
+
+    y_offset = bpy.props.FloatProperty(
+        name="Y Offset",
+        min=0,
+        max=1
+    )
+
     @classmethod
     def poll(cls, context):
         return context.active_object is not None
 
     def execute(self, context):
-        main(context, self.num_subdivisions)
-        print(self.num_subdivisions)
+        main(context, self.num_subdivisions, self.rotate_amount, self.x_offset, self.y_offset)
         return {'FINISHED'}
 
 class DividerPanel(bpy.types.Panel):
@@ -126,15 +156,37 @@ class DividerPanel(bpy.types.Panel):
 
         op = layout.operator(DividerOperator.bl_idname)
         op.num_subdivisions = scene.div_settings.num_subdivisions
+        op.rotate_amount = scene.div_settings.rotate_amount
         obj = context.object
 
         layout.prop(scene.div_settings, "num_subdivisions")
+        layout.prop(scene.div_settings, "rotate_amount")
+        layout.prop(scene.div_settings, "x_offset")
+        layout.prop(scene.div_settings, "y_offset")
 
 class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
         min=1,
         max=1000
+    )
+
+    rotate_amount = bpy.props.IntProperty(
+        name="Rotate Amount",
+        min=0,
+        max=1000
+    )
+
+    x_offset = bpy.props.FloatProperty(
+        name=" Offset",
+        min=0,
+        max=1
+    )
+
+    y_offset = bpy.props.FloatProperty(
+        name="Y Offset",
+        min=0,
+        max=1
     )
 
 def register():
