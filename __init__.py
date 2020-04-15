@@ -16,6 +16,8 @@ from bpy.props import IntProperty, PointerProperty
 import mathutils
 import bmesh
 import random
+from mathutils import Vector
+
 
 bl_info = {
     "name" : "Divider",
@@ -28,7 +30,7 @@ bl_info = {
     "category" : "Generic"
 }
 
-def main(context, num_subdivisions, x_offset, y_offset):
+def main(context, num_subdivisions, offset, extrude):
     obj = context.object
     if bpy.context.mode == 'EDIT_MESH':
         bm = bmesh.from_edit_mesh(obj.data)
@@ -37,32 +39,37 @@ def main(context, num_subdivisions, x_offset, y_offset):
         bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
-    x = 0.4
-    y = 0.4
-    subdivide(bm, obj.data.vertices, num_subdivisions, x, y)
+    all_faces = []
+    subdivide(bm, obj.data.vertices, bm.faces[0], num_subdivisions, offset, all_faces)
+    if extrude:
+        for face in all_faces:
+            r = bmesh.ops.extrude_discrete_faces(bm, faces=[face])
+            extrude_height = random.uniform(0.5, 1)
+            print(r)
+            verts_to_translate = r['faces'][0].verts
+            bmesh.ops.translate( bm, vec = Vector((0,0,extrude_height)), verts=verts_to_translate)
     bmesh.update_edit_mesh(obj.data)
 
 
-def subdivide(bm, pv, level, x, y):
+def subdivide(bm, pv, parent_face, level, offset, all_faces):
     pv_co = [vert.co for vert in pv]
-    print('sub', pv_co, level)
     if level == 0:
+        all_faces.append(parent_face)
         return
     else:
 
         # pos x - top
-        top = pv_co[2].lerp(pv_co[3], x)
+        top = pv_co[2].lerp(pv_co[3], offset)
         # pos y - right
-        right = pv_co[3].lerp(pv_co[1], y)
+        right = pv_co[3].lerp(pv_co[1], offset)
         # neg x - bottom
-        bottom = pv_co[0].lerp(pv_co[1], 1-x)
+        bottom = pv_co[0].lerp(pv_co[1], 1-offset)
         # neg y - left
-        left = pv_co[2].lerp(pv_co[0], y)
+        left = pv_co[2].lerp(pv_co[0], offset)
 
-        
-        pos_e = left.lerp(right, y)
+        pos_e = left.lerp(right, offset)
         # center
-        pos_f = left.lerp(right, 1-y)
+        pos_f = left.lerp(right, 1-offset)
 
         new_points = {
             "top": top,
@@ -79,7 +86,6 @@ def subdivide(bm, pv, level, x, y):
         new_verts = {}
 
         for key in new_points:
-            print(key, new_points[key])
             new_verts[key] = bm.verts.new(new_points[key])
 
         faces = [
@@ -90,12 +96,15 @@ def subdivide(bm, pv, level, x, y):
             [new_verts["1"], new_verts["bottom"], new_verts["mid_neg"], new_verts["right"]]
         ]
 
+        bm.faces.remove(parent_face)
+
         for face in faces:
-            new_verts = bm.faces.new(face).verts
+            new_face = bm.faces.new(face)
+            new_verts = new_face.verts
             bm.verts.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
             nv = [new_verts[0], new_verts[1], new_verts[3], new_verts[2]]
-            subdivide(bm, nv, level-1, x, y)
+            subdivide(bm, nv, new_face, level-1, offset, all_faces)
 
 def rotate(l, n): return l[n:] + l[:n]
 
@@ -105,36 +114,6 @@ def sort(verts):
         sorted.append(verts[len(verts)-x-1])
     return sorted
 
-
-class DividerOperator(bpy.types.Operator):
-    bl_idname = "object.divider_operator"
-    bl_label = "Recursive Subdivide Object"
-
-    num_subdivisions = bpy.props.IntProperty(
-        name="Num Subdivs",
-        min=1,
-        max=50
-    )
-
-    x_offset = bpy.props.FloatProperty(
-        name=" Offset",
-        min=0,
-        max=1
-    )
-
-    y_offset = bpy.props.FloatProperty(
-        name="Y Offset",
-        min=0,
-        max=1
-    )
-
-    @classmethod
-    def poll(cls, context):
-        return context.active_object is not None
-
-    def execute(self, context):
-        main(context, self.num_subdivisions, self.x_offset, self.y_offset)
-        return {'FINISHED'}
 
 class DividerPanel(bpy.types.Panel):
     bl_idname = "panel.divider"
@@ -149,11 +128,41 @@ class DividerPanel(bpy.types.Panel):
 
         op = layout.operator(DividerOperator.bl_idname)
         op.num_subdivisions = scene.div_settings.num_subdivisions
-        obj = context.object
+        op.offset = scene.div_settings.offset
 
         layout.prop(scene.div_settings, "num_subdivisions")
-        layout.prop(scene.div_settings, "x_offset")
-        layout.prop(scene.div_settings, "y_offset")
+        layout.prop(scene.div_settings, "offset")
+        layout.prop(scene.div_settings, "extrude")
+
+class DividerOperator(bpy.types.Operator):
+    bl_idname = "object.divider_operator"
+    bl_label = "Recursive Subdivide Object"
+
+    num_subdivisions = bpy.props.IntProperty(
+        name="Num Subdivs",
+        min=1,
+        max=50
+    )
+
+    offset = bpy.props.FloatProperty(
+        name="Offset",
+        min=0,
+        max=1,
+        default=0.3
+    )
+
+    extrude = bpy.props.BoolProperty(
+        name="Extrude After Subdivide",
+        default=True
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
+    def execute(self, context):
+        main(context, self.num_subdivisions, self.offset, self.extrude)
+        return {'FINISHED'}
 
 class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
@@ -162,16 +171,16 @@ class DividerSettings(bpy.types.PropertyGroup):
         max=1000
     )
 
-    x_offset = bpy.props.FloatProperty(
-        name=" Offset",
+    offset = bpy.props.FloatProperty(
+        name="Offset",
         min=0,
-        max=1
+        max=1,
+        default=0.3
     )
 
-    y_offset = bpy.props.FloatProperty(
-        name="Y Offset",
-        min=0,
-        max=1
+    extrude = bpy.props.BoolProperty(
+        name="Extrude After Subdivide",
+        default=True
     )
 
 def register():
