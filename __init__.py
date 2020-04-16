@@ -46,16 +46,12 @@ def main(context, num_subdivisions, offset, extrude):
         end_frame.interpolation = 'KEY_LINEAR'
         animated = create_offset_bmesh(context, decoy, num_subdivisions, 0.5, extrude)
         animated.to_mesh(decoy.data)
-        print(len(basis.verts), len(animated.verts))
         basis.verts.ensure_lookup_table()
         animated.verts.ensure_lookup_table()
         basis.to_mesh(obj.data)
-        for i in range(len(end_frame.data)):
-            print(end_frame.data[i].co, basis.verts[i].co)
         for i in range(len(basis.verts)):
             end_frame.data[i].co = animated.verts[i].co
             begin_frame.data[i].co = basis.verts[i].co
-            print(end_frame.data[i].co, animated.verts[i].co, basis.verts[i].co)
         animated.to_mesh(decoy.data)
 
 def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude):
