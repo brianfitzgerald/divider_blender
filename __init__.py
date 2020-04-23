@@ -64,7 +64,6 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
     subdivide(bm, obj.data.vertices, bm.faces[0], num_subdivisions, offset, all_faces)
     print(extrude_style)
     if extrude_style != 'flat':
-        extrusion_threshold = 0
         faces = bm.faces
         # Once faces are being extruded, this is the range they use to translate
         random_range = [0.5, 1]
@@ -72,31 +71,30 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
         for face in faces:
             area = face.calc_area()
             areas.append(area)
-        areas.sort(reverse=True)
-        # top N% of areas
+        areas.sort(reverse=False)
+        distribution = [1]
         if extrude_style == 'hilly':
-            extrusion_threshold = 0.3
-            random_range = [0.2, 0.3]
+            distribution = [0, 1]
+            random_range = [[0], [0.1, 0.2]]
         if extrude_style == 'towers':
-            extrusion_threshold = 0.2
-            random_range = [1.5, 2]
-        extrude_min = areas[-1]
-        for x in range(len(areas)):
-            if x < round(extrusion_threshold * len(areas)):
-                if areas[x] < extrude_min:
-                    extrude_min = areas[x]
-        print(extrude_min, extrusion_threshold, areas)
+            distribution = [0, 3, 1]
+            random_range = [[0],[0.5, 1], [1, 2]]
+        distribution_points = []
+        while len(distribution_points) < len(faces):
+            for x in range(len(distribution)):
+                distribution_points.append(random_range[x])
+        random.shuffle(distribution_points)
+        print(distribution_points)
         for x in range(len(faces)):
             bm.faces.ensure_lookup_table()
             area = faces[x].calc_area()
             face = faces[x]
-            r = bmesh.ops.extrude_discrete_faces(bm, faces=[face])
-            extrude_height = random.uniform(random_range[0], random_range[1])
-            verts_to_translate = r['faces'][0].verts
-            if area < extrude_min and extrude_style != 'hilly':
+            range_for_face = distribution_points[x]
+            if len(range_for_face) == 1:
                 continue
-            elif extrude_style == 'hilly':
-                extrude_height = 0.05 if random.choice([0,1]) == 1 else 0
+            r = bmesh.ops.extrude_discrete_faces(bm, faces=[face])
+            extrude_height = random.uniform(range_for_face[0], range_for_face[1])
+            verts_to_translate = r['faces'][0].verts
             bmesh.ops.translate( bm, vec = Vector((0,0,extrude_height)), verts=verts_to_translate)
     return bm
 
@@ -200,7 +198,8 @@ class DividerOperator(bpy.types.Operator):
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
         min=1,
-        max=50
+        max=50,
+        default=3
     )
 
     offset = bpy.props.FloatProperty(
@@ -214,7 +213,7 @@ class DividerOperator(bpy.types.Operator):
         name="Animation End Offset",
         min=0,
         max=1,
-        default=0.5
+        default=0.8
     )
 
     extrude_style = bpy.props.EnumProperty(
@@ -234,7 +233,8 @@ class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
         min=1,
-        max=1000
+        max=1000,
+        default=3
     )
 
     offset = bpy.props.FloatProperty(
@@ -248,7 +248,7 @@ class DividerSettings(bpy.types.PropertyGroup):
         name="Animation End Offset",
         min=0,
         max=1,
-        default=0.5
+        default=0.8
     )
 
     extrude_style = bpy.props.EnumProperty(
