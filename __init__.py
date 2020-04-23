@@ -20,15 +20,16 @@ from mathutils import Vector
 
 
 bl_info = {
-    "name" : "Divider",
-    "author" : "Brian Fitzgerald",
-    "description" : "",
-    "blender" : (2, 80, 0),
-    "version" : (0, 0, 1),
-    "location" : "",
-    "warning" : "",
-    "category" : "Generic"
+    "name": "Divider",
+    "author": "Brian Fitzgerald",
+    "description": "",
+    "blender": (2, 80, 0),
+    "version": (0, 0, 1),
+    "location": "",
+    "warning": "",
+    "category": "Generic"
 }
+
 
 def main(context, num_subdivisions, offset, animation_end_offset, extrude_style):
     obj = context.object
@@ -36,7 +37,8 @@ def main(context, num_subdivisions, offset, animation_end_offset, extrude_style)
     decoy = obj.copy()
     decoy.data = obj.data.copy()
     bpy.context.scene.collection.objects.link(decoy)
-    basis = create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style)
+    basis = create_offset_bmesh(
+        context, obj, num_subdivisions, offset, extrude_style)
     basis.to_mesh(obj.data)
     if animate:
         # end frame
@@ -44,7 +46,8 @@ def main(context, num_subdivisions, offset, animation_end_offset, extrude_style)
         end_frame = obj.shape_key_add(name="end")
         begin_frame.interpolation = 'KEY_LINEAR'
         end_frame.interpolation = 'KEY_LINEAR'
-        animated = create_offset_bmesh(context, decoy, num_subdivisions, animation_end_offset, extrude_style)
+        animated = create_offset_bmesh(
+            context, decoy, num_subdivisions, animation_end_offset, extrude_style)
         animated.to_mesh(decoy.data)
         basis.verts.ensure_lookup_table()
         animated.verts.ensure_lookup_table()
@@ -53,7 +56,8 @@ def main(context, num_subdivisions, offset, animation_end_offset, extrude_style)
             end_frame.data[i].co = animated.verts[i].co
             begin_frame.data[i].co = basis.verts[i].co
         animated.to_mesh(decoy.data)
-        bpy.data.objects.remove(decoy) 
+        bpy.data.objects.remove(decoy)
+
 
 def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
     bm = bmesh.new()
@@ -61,12 +65,13 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
     all_faces = []
-    subdivide(bm, obj.data.vertices, bm.faces[0], num_subdivisions, offset, all_faces)
+    subdivide(bm, obj.data.vertices,
+              bm.faces[0], num_subdivisions, offset, all_faces)
     print(extrude_style)
     if extrude_style != 'flat':
         faces = bm.faces
         # Once faces are being extruded, this is the range they use to translate
-        random_range = [0.5, 1]
+        random_range = [[0.5, 1]]
         areas = []
         for face in faces:
             area = face.calc_area()
@@ -78,12 +83,11 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
             random_range = [[0], [0.1, 0.2]]
         if extrude_style == 'towers':
             distribution = [0, 3, 1]
-            random_range = [[0],[0.5, 1], [1, 2]]
+            random_range = [[0], [0.5, 1], [1, 2]]
         distribution_points = []
         while len(distribution_points) < len(faces):
             for x in range(len(distribution)):
                 distribution_points.append(random_range[x])
-        random.shuffle(distribution_points)
         print(distribution_points)
         for x in range(len(faces)):
             bm.faces.ensure_lookup_table()
@@ -93,10 +97,13 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
             if len(range_for_face) == 1:
                 continue
             r = bmesh.ops.extrude_discrete_faces(bm, faces=[face])
-            extrude_height = random.uniform(range_for_face[0], range_for_face[1])
+            extrude_height = random.uniform(
+                range_for_face[0], range_for_face[1])
             verts_to_translate = r['faces'][0].verts
-            bmesh.ops.translate( bm, vec = Vector((0,0,extrude_height)), verts=verts_to_translate)
+            bmesh.ops.translate(bm, vec=Vector(
+                (0, 0, extrude_height)), verts=verts_to_translate)
     return bm
+
 
 def subdivide(bm, pv, parent_face, level, offset, all_faces):
     pv_co = [vert.co for vert in pv]
@@ -137,10 +144,14 @@ def subdivide(bm, pv, parent_face, level, offset, all_faces):
 
         faces = [
             # bottom left, bottom, center, left
-            [new_verts["0"], new_verts["bottom"], new_verts["mid_neg"], new_verts["left"]],
-            [new_verts["top"], new_verts["2"], new_verts["left"], new_verts["mid_pos"]],
-            [new_verts["mid_pos"], new_verts["right"], new_verts["3"], new_verts["top"]],
-            [new_verts["1"], new_verts["bottom"], new_verts["mid_neg"], new_verts["right"]]
+            [new_verts["0"], new_verts["bottom"],
+                new_verts["mid_neg"], new_verts["left"]],
+            [new_verts["top"], new_verts["2"],
+                new_verts["left"], new_verts["mid_pos"]],
+            [new_verts["mid_pos"], new_verts["right"],
+                new_verts["3"], new_verts["top"]],
+            [new_verts["1"], new_verts["bottom"],
+                new_verts["mid_neg"], new_verts["right"]]
         ]
 
         bm.faces.remove(parent_face)
@@ -153,7 +164,9 @@ def subdivide(bm, pv, parent_face, level, offset, all_faces):
             nv = [new_verts[0], new_verts[1], new_verts[3], new_verts[2]]
             subdivide(bm, nv, new_face, level-1, offset, all_faces)
 
+
 def rotate(l, n): return l[n:] + l[:n]
+
 
 def sort(verts):
     sorted = []
@@ -184,12 +197,14 @@ class DividerPanel(bpy.types.Panel):
         layout.prop(scene.div_settings, "animation_end_offset")
         layout.prop(scene.div_settings, "extrude_style")
 
+
 extrude_style_options = [
     ('flat', 'Flat', 'No extrusion'),
     ('random', 'Random', 'Evently distributed random extrusion'),
     ('hilly', 'Hilly', 'Larger sections are given a short extrusion'),
     ('towers', 'Towers', 'Random small surfaces are given a tall extrusion'),
 ]
+
 
 class DividerOperator(bpy.types.Operator):
     bl_idname = "object.divider_operator"
@@ -218,7 +233,7 @@ class DividerOperator(bpy.types.Operator):
 
     extrude_style = bpy.props.EnumProperty(
         name="Extrude Style",
-        items = extrude_style_options
+        items=extrude_style_options
     )
 
     @classmethod
@@ -226,8 +241,10 @@ class DividerOperator(bpy.types.Operator):
         return context.active_object is not None
 
     def execute(self, context):
-        main(context, self.num_subdivisions, self.offset, self.animation_end_offset, self.extrude_style)
+        main(context, self.num_subdivisions, self.offset,
+             self.animation_end_offset, self.extrude_style)
         return {'FINISHED'}
+
 
 class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
@@ -253,7 +270,7 @@ class DividerSettings(bpy.types.PropertyGroup):
 
     extrude_style = bpy.props.EnumProperty(
         name="Extrude Style",
-        items = extrude_style_options
+        items=extrude_style_options
     )
 
 
@@ -269,6 +286,7 @@ def unregister():
     bpy.utils.unregister_class(DividerOperator)
     bpy.utils.unregister_class(DividerPanel)
     del(bpy.types.Scene.div_settings)
+
 
 if __name__ == "__main__":
     register()
