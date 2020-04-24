@@ -31,35 +31,36 @@ bl_info = {
 }
 
 
-def main(context, num_subdivisions, offset, animation_end_offset, extrude_style):
+def main(context, op):
     obj = context.object
-    animate = True
     decoy = obj.copy()
     decoy.data = obj.data.copy()
     bpy.context.scene.collection.objects.link(decoy)
     basis = create_offset_bmesh(
-        context, obj, num_subdivisions, offset, extrude_style)
+        context, obj, op.num_subdivisions, op.offset, op.extrude_style, 0)
     basis.to_mesh(obj.data)
-    if animate:
-        # end frame
+    if op.animate:
+        # Create bmeshes for animation
         begin_frame = obj.shape_key_add(name="begin")
         end_frame = obj.shape_key_add(name="end")
         begin_frame.interpolation = 'KEY_LINEAR'
         end_frame.interpolation = 'KEY_LINEAR'
         animated = create_offset_bmesh(
-            context, decoy, num_subdivisions, animation_end_offset, extrude_style)
+            context, decoy, op.num_subdivisions, op.animation_end_offset, op.extrude_style, 1)
         animated.to_mesh(decoy.data)
         basis.verts.ensure_lookup_table()
         animated.verts.ensure_lookup_table()
         basis.to_mesh(obj.data)
+        # create shape keys
         for i in range(len(basis.verts)):
             end_frame.data[i].co = animated.verts[i].co
             begin_frame.data[i].co = basis.verts[i].co
+        # delete decoy bmesh
         animated.to_mesh(decoy.data)
         bpy.data.objects.remove(decoy)
 
 
-def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
+def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, offset_index):
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
@@ -67,7 +68,6 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
     all_faces = []
     subdivide(bm, obj.data.vertices,
               bm.faces[0], num_subdivisions, offset, all_faces)
-    print(extrude_style)
     if extrude_style != 'flat':
         faces = bm.faces
         # Once faces are being extruded, this is the range they use to translate
@@ -88,7 +88,6 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
         while len(distribution_points) < len(faces):
             for x in range(len(distribution)):
                 distribution_points.append(random_range[x])
-        print(distribution_points)
         for x in range(len(faces)):
             bm.faces.ensure_lookup_table()
             area = faces[x].calc_area()
@@ -99,6 +98,12 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style):
             r = bmesh.ops.extrude_discrete_faces(bm, faces=[face])
             extrude_height = random.uniform(
                 range_for_face[0], range_for_face[1])
+            if extrude_style == "evenodd":
+                even = x % 2 == 0
+                if offset_index == 0:
+                    extrude_height = 0.5 if even else 1
+                else:
+                    extrude_height = 1 if even else 0.5
             verts_to_translate = r['faces'][0].verts
             bmesh.ops.translate(bm, vec=Vector(
                 (0, 0, extrude_height)), verts=verts_to_translate)
@@ -183,8 +188,26 @@ class DividerPanel(bpy.types.Panel):
     bl_category = "Divider"
 
     def draw(self, context):
+
         layout = self.layout
         scene = context.scene
+        animate = scene.div_settings.animate
+        create_keyframes = scene.div_settings.create_keyframes
+
+        layout.prop(scene.div_settings, "num_subdivisions")
+        layout.prop(scene.div_settings, "offset")
+        layout.label(text="Animation")
+        layout.prop(scene.div_settings, "animate")
+        layout.prop(scene.div_settings, "create_keyframes")
+        layout.prop(scene.div_settings, "start_keyframe")
+        layout.prop(scene.div_settings, "end_keyframe")
+        layout.prop(scene.div_settings,
+                    "animation_end_offset")
+        layout.label(text="Extrude Style")
+        layout.prop(scene.div_settings, "extrude_style", text="")
+        layout.label(text="Object Substitution")
+        layout.prop(scene.div_settings, "substitute")
+        layout.prop(scene.div_settings, "object_to_substitute")
 
         op = layout.operator(DividerOperator.bl_idname)
         op.num_subdivisions = scene.div_settings.num_subdivisions
@@ -192,17 +215,14 @@ class DividerPanel(bpy.types.Panel):
         op.animation_end_offset = scene.div_settings.animation_end_offset
         op.extrude_style = scene.div_settings.extrude_style
 
-        layout.prop(scene.div_settings, "num_subdivisions")
-        layout.prop(scene.div_settings, "offset")
-        layout.prop(scene.div_settings, "animation_end_offset")
-        layout.prop(scene.div_settings, "extrude_style")
-
 
 extrude_style_options = [
     ('flat', 'Flat', 'No extrusion'),
     ('random', 'Random', 'Evently distributed random extrusion'),
     ('hilly', 'Hilly', 'Larger sections are given a short extrusion'),
     ('towers', 'Towers', 'Random small surfaces are given a tall extrusion'),
+    ('evenodd', 'Even / Odd',
+     'Each surface is given an inverse extrusion on the first/last frame'),
 ]
 
 
@@ -236,13 +256,41 @@ class DividerOperator(bpy.types.Operator):
         items=extrude_style_options
     )
 
+    animate = bpy.props.BoolProperty(
+        name="Animate",
+        default=True
+    )
+
+    create_keyframes = bpy.props.BoolProperty(
+        name="Create Keyframes",
+        default=True
+    )
+
+    start_keyframe = bpy.props.IntProperty(
+        name="Start Keyframe",
+        default=0
+    )
+
+    end_keyframe = bpy.props.IntProperty(
+        name="End Keyframe",
+        default=250
+    )
+
+    substitute = bpy.props.BoolProperty(
+        name="Substitute"
+    )
+
+    object_to_substitute = bpy.props.PointerProperty(
+        name="Object to Substitute",
+        type=bpy.types.Object
+    )
+
     @classmethod
     def poll(cls, context):
         return context.active_object is not None
 
     def execute(self, context):
-        main(context, self.num_subdivisions, self.offset,
-             self.animation_end_offset, self.extrude_style)
+        main(context, self)
         return {'FINISHED'}
 
 
@@ -271,6 +319,35 @@ class DividerSettings(bpy.types.PropertyGroup):
     extrude_style = bpy.props.EnumProperty(
         name="Extrude Style",
         items=extrude_style_options
+    )
+
+    animate = bpy.props.BoolProperty(
+        name="Animate",
+        default=True
+    )
+
+    create_keyframes = bpy.props.BoolProperty(
+        name="Create Keyframes",
+        default=True
+    )
+
+    start_keyframe = bpy.props.IntProperty(
+        name="Start Keyframe",
+        default=0
+    )
+
+    end_keyframe = bpy.props.IntProperty(
+        name="End Keyframe",
+        default=250
+    )
+
+    substitute = bpy.props.BoolProperty(
+        name="Substitute"
+    )
+
+    object_to_substitute = bpy.props.PointerProperty(
+        name="Object to Substitute",
+        type=bpy.types.Object
     )
 
 
