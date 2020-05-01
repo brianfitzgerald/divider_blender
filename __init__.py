@@ -31,6 +31,9 @@ bl_info = {
 }
 
 
+random_seed = 401
+
+
 def main(context, op):
     obj = context.object
     decoy = obj.copy()
@@ -79,15 +82,18 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, o
         areas.sort(reverse=False)
         distribution = [1]
         if extrude_style == 'hilly':
-            distribution = [0, 1]
-            random_range = [[0], [0.1, 0.2]]
+            distribution = [2, 1]
+            random_range = [[0], [0.02, 0.05]]
         if extrude_style == 'towers':
             distribution = [0, 3, 1]
             random_range = [[0], [0.5, 1], [1, 2]]
         distribution_points = []
         while len(distribution_points) < len(faces):
-            for x in range(len(distribution)):
-                distribution_points.append(random_range[x])
+            for i in range(len(distribution)):
+                for x in range(distribution[i]):
+                    print('x', x)
+                    distribution_points.append(random_range[i])
+        random.Random(random_seed).shuffle(distribution_points)
         for x in range(len(faces)):
             bm.faces.ensure_lookup_table()
             area = faces[x].calc_area()
