@@ -87,6 +87,9 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, o
         if extrude_style == 'towers':
             distribution = [0, 3, 1]
             random_range = [[0], [0.5, 1], [1, 2]]
+        if extrude_style == 'ultratowers':
+            distribution = [6, 1]
+            random_range = [[0], [2, 2.5]]
         distribution_points = []
         while len(distribution_points) < len(faces):
             for i in range(len(distribution)):
@@ -197,8 +200,6 @@ class DividerPanel(bpy.types.Panel):
 
         layout = self.layout
         scene = context.scene
-        animate = scene.div_settings.animate
-        create_keyframes = scene.div_settings.create_keyframes
 
         layout.prop(scene.div_settings, "num_subdivisions")
         layout.prop(scene.div_settings, "offset")
@@ -215,6 +216,8 @@ class DividerPanel(bpy.types.Panel):
         layout.prop(scene.div_settings, "substitute")
         layout.prop(scene.div_settings, "object_to_substitute")
 
+        layout.operator(CreatePlaneOperator.bl_idname)
+
         op = layout.operator(DividerOperator.bl_idname)
         op.num_subdivisions = scene.div_settings.num_subdivisions
         op.offset = scene.div_settings.offset
@@ -226,7 +229,8 @@ extrude_style_options = [
     ('flat', 'Flat', 'No extrusion'),
     ('random', 'Random', 'Evently distributed random extrusion'),
     ('hilly', 'Hilly', 'Larger sections are given a short extrusion'),
-    ('towers', 'Towers', 'Random small surfaces are given a tall extrusion'),
+    ('towers', 'Towers', 'Even distribution with some made very tall'),
+    ('ultratowers', 'Ultra Towers', 'Only occasional very tall extrusions'),
     ('evenodd', 'Even / Odd',
      'Each surface is given an inverse extrusion on the first/last frame'),
 ]
@@ -299,7 +303,20 @@ class DividerOperator(bpy.types.Operator):
         main(context, self)
         return {'FINISHED'}
 
+class CreatePlaneOperator(bpy.types.Operator):
+    bl_idname = "object.create_plane_operator"
+    bl_label = "Create Plane"
 
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return True
+        return context.active_object.mode == 'OBJECT'
+
+    def execute(self, context):
+        bpy.ops.mesh.primitive_plane_add(size=5)
+        return {'FINISHED'}
+ 
 class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
@@ -361,12 +378,14 @@ def register():
     bpy.utils.register_class(DividerSettings)
     bpy.types.Scene.div_settings = PointerProperty(type=DividerSettings)
     bpy.utils.register_class(DividerOperator)
+    bpy.utils.register_class(CreatePlaneOperator)
     bpy.utils.register_class(DividerPanel)
 
 
 def unregister():
     bpy.utils.unregister_class(DividerSettings)
     bpy.utils.unregister_class(DividerOperator)
+    bpy.utils.unregister_class(CreatePlaneOperator)
     bpy.utils.unregister_class(DividerPanel)
     del(bpy.types.Scene.div_settings)
 
