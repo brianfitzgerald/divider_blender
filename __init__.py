@@ -45,8 +45,6 @@ def ShowMessageBox(message="", title="Message Box", icon='INFO'):
 def main(context, op):
     obj = context.object
 
-    print(op.subbed_meshes)
-
     if obj in op.subbed_meshes:
         ShowMessageBox(
             "This mesh has been subdivided already, try a different one or delete this one.")
@@ -54,9 +52,8 @@ def main(context, op):
 
     op.subbed_meshes.append(obj)
 
-    decoy = obj.copy()
-    decoy.data = obj.data.copy()
-    bpy.context.scene.collection.objects.link(decoy)
+    original_mesh = obj.copy()
+    original_mesh.data = obj.data.copy()
     basis = create_offset_bmesh(
         context, obj, op.num_subdivisions, op.offset, op.extrude_style, 0)
     basis.to_mesh(obj.data)
@@ -69,29 +66,48 @@ def main(context, op):
         return
 
     if op.animate:
+        num_frames = 2
         # Create bmeshes for animation
-        begin_frame = obj.shape_key_add(name="begin")
-        end_frame = obj.shape_key_add(name="end")
-        begin_frame.interpolation = 'KEY_LINEAR'
-        end_frame.interpolation = 'KEY_LINEAR'
-        animated = create_offset_bmesh(
-            context, decoy, op.num_subdivisions, op.animation_end_offset, op.extrude_style, 1)
-        animated.to_mesh(decoy.data)
+        if op.create_noise_keyframes:
+            num_frames = 5
+        for index in range(num_frames):
+            create_keyframe(context, op, obj, basis, original_mesh,
+                            index, num_frames, op.create_keyframes)
 
-        basis.verts.ensure_lookup_table()
-        animated.verts.ensure_lookup_table()
-
-        basis.to_mesh(obj.data)
-        # create shape keys
-        for i in range(len(basis.verts)):
-            end_frame.data[i].co = animated.verts[i].co
-            begin_frame.data[i].co = basis.verts[i].co
-        # delete decoy bmesh
-        animated.to_mesh(decoy.data)
-        bpy.data.objects.remove(decoy)
+    bpy.data.objects.remove(original_mesh)
 
 
-def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, offset_index):
+def create_keyframe(context, op, obj, basis, original_mesh, frame_index, total_frames, add_key):
+    decoy = original_mesh.copy()
+    decoy.data = original_mesh.data.copy()
+    bpy.context.scene.collection.objects.link(decoy)
+
+    offset_amount = op.offset + \
+        (frame_index / total_frames) * \
+        (op.animation_end_offset - op.offset)
+    offset_amount = round(offset_amount, 2)
+
+    print('offset amt', offset_amount)
+    offset_bmesh = create_offset_bmesh(
+        context, decoy, op.num_subdivisions, offset_amount, op.extrude_style, frame_index)
+
+    basis.verts.ensure_lookup_table()
+    offset_bmesh.verts.ensure_lookup_table()
+
+    keyframe_name = "Frame {}".format(frame_index)
+    frame = obj.shape_key_add(name=keyframe_name)
+    frame.interpolation = 'KEY_LINEAR'
+
+    offset_bmesh.to_mesh(decoy.data)
+    for i in range(len(basis.verts)):
+        print(frame.data[i].co, offset_bmesh.verts[i].co)
+        frame.data[i].co = offset_bmesh.verts[i].co
+    offset_bmesh.to_mesh(decoy.data)
+    bpy.data.objects.remove(decoy)
+    return frame
+
+
+def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, frame_index):
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
@@ -122,7 +138,6 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, o
         while len(distribution_points) < len(faces):
             for i in range(len(distribution)):
                 for x in range(distribution[i]):
-                    print('x', x)
                     distribution_points.append(random_range[i])
         random.Random(random_seed).shuffle(distribution_points)
         for x in range(len(faces)):
@@ -137,7 +152,7 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, o
                 range_for_face[0], range_for_face[1])
             if extrude_style == "evenodd":
                 even = x % 2 == 0
-                if offset_index == 0:
+                if frame_index == 0:
                     extrude_height = 0.5 if even else 1
                 else:
                     extrude_height = 1 if even else 0.5
