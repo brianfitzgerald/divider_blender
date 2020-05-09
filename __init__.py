@@ -52,8 +52,10 @@ def main(context, op):
 
     op.subbed_meshes.append(obj)
 
+    # Important that this is not modified as it's used for each interpolation.
     original_mesh = obj.copy()
     original_mesh.data = obj.data.copy()
+    # Basis is the first frame of the subdiv mesh.
     basis = create_offset_bmesh(
         context, obj, op.num_subdivisions, op.offset, op.extrude_style, 0)
     basis.to_mesh(obj.data)
@@ -65,19 +67,37 @@ def main(context, op):
             "Please check 'Animate' and 'Create Keyframes' if you want to use noise keyframes!")
         return
 
+    shape_keys = []
     if op.animate:
         num_frames = 2
         # Create bmeshes for animation
         if op.create_noise_keyframes:
             num_frames = 5
         for index in range(num_frames):
-            create_keyframe(context, op, obj, basis, original_mesh,
-                            index, num_frames, op.create_keyframes)
+            frame = create_shape_key_with_offset(context, op, obj, basis, original_mesh,
+                                                 index, num_frames, op.create_keyframes)
+            shape_keys.append(frame)
+
+    looping = True
+
+    if op.animate:
+        for frame in range(len(shape_keys) * 10):
+            for index in range(len(shape_keys)):
+                if frame % 10 == 0:
+                    if frame / 10 == index:
+                        shape_keys[index].value = 1
+                    else:
+                        shape_keys[index].value = 0
+                    shape_keys[index].keyframe_insert("value", frame=frame)
 
     bpy.data.objects.remove(original_mesh)
 
 
-def create_keyframe(context, op, obj, basis, original_mesh, frame_index, total_frames, add_key):
+# Create a new shape kaey starting with the original mesh data and generating a new subdiv with a specific offset.
+# This creates new geometry each time.
+# Apply only one keyframe at a time, as they're all relative to each other!
+def create_shape_key_with_offset(context, op, obj, basis, original_mesh, frame_index, total_frames, add_key):
+    #
     decoy = original_mesh.copy()
     decoy.data = original_mesh.data.copy()
     bpy.context.scene.collection.objects.link(decoy)
@@ -98,11 +118,10 @@ def create_keyframe(context, op, obj, basis, original_mesh, frame_index, total_f
     frame = obj.shape_key_add(name=keyframe_name)
     frame.interpolation = 'KEY_LINEAR'
 
+    # Take the offset mesh and apply it to decoy
     offset_bmesh.to_mesh(decoy.data)
     for i in range(len(basis.verts)):
-        print(frame.data[i].co, offset_bmesh.verts[i].co)
         frame.data[i].co = offset_bmesh.verts[i].co
-    offset_bmesh.to_mesh(decoy.data)
     bpy.data.objects.remove(decoy)
     return frame
 
