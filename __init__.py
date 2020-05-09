@@ -34,14 +34,40 @@ bl_info = {
 random_seed = 401
 
 
+def ShowMessageBox(message="", title="Message Box", icon='INFO'):
+
+    def draw(self, context):
+        self.layout.label(text=message)
+
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
+
+
 def main(context, op):
     obj = context.object
+
+    print(op.subbed_meshes)
+
+    if obj in op.subbed_meshes:
+        ShowMessageBox(
+            "This mesh has been subdivided already, try a different one or delete this one.")
+        return
+
+    op.subbed_meshes.append(obj)
+
     decoy = obj.copy()
     decoy.data = obj.data.copy()
     bpy.context.scene.collection.objects.link(decoy)
     basis = create_offset_bmesh(
         context, obj, op.num_subdivisions, op.offset, op.extrude_style, 0)
     basis.to_mesh(obj.data)
+
+    print(op.create_noise_keyframes, op.animate, op.create_keyframes)
+
+    if op.create_noise_keyframes and not (op.animate and op.create_keyframes):
+        ShowMessageBox(
+            "Please check 'Animate' and 'Create Keyframes' if you want to use noise keyframes!")
+        return
+
     if op.animate:
         # Create bmeshes for animation
         begin_frame = obj.shape_key_add(name="begin")
@@ -51,8 +77,10 @@ def main(context, op):
         animated = create_offset_bmesh(
             context, decoy, op.num_subdivisions, op.animation_end_offset, op.extrude_style, 1)
         animated.to_mesh(decoy.data)
+
         basis.verts.ensure_lookup_table()
         animated.verts.ensure_lookup_table()
+
         basis.to_mesh(obj.data)
         # create shape keys
         for i in range(len(basis.verts)):
@@ -203,6 +231,7 @@ class DividerPanel(bpy.types.Panel):
 
         layout.prop(scene.div_settings, "num_subdivisions")
         layout.prop(scene.div_settings, "offset")
+
         layout.label(text="Animation")
         layout.prop(scene.div_settings, "animate")
         layout.prop(scene.div_settings, "create_keyframes")
@@ -210,11 +239,11 @@ class DividerPanel(bpy.types.Panel):
         layout.prop(scene.div_settings, "end_keyframe")
         layout.prop(scene.div_settings,
                     "animation_end_offset")
+        layout.prop(scene.div_settings,
+                    "create_noise_keyframes")
+
         layout.label(text="Extrude Style")
         layout.prop(scene.div_settings, "extrude_style", text="")
-        layout.label(text="Object Substitution")
-        layout.prop(scene.div_settings, "substitute")
-        layout.prop(scene.div_settings, "object_to_substitute")
 
         layout.operator(CreatePlaneOperator.bl_idname)
 
@@ -223,6 +252,9 @@ class DividerPanel(bpy.types.Panel):
         op.offset = scene.div_settings.offset
         op.animation_end_offset = scene.div_settings.animation_end_offset
         op.extrude_style = scene.div_settings.extrude_style
+        op.create_noise_keyframes = scene.div_settings.create_noise_keyframes
+        op.animate = scene.div_settings.animate
+        op.create_keyframes = scene.div_settings.create_keyframes
 
 
 extrude_style_options = [
@@ -286,14 +318,12 @@ class DividerOperator(bpy.types.Operator):
         default=250
     )
 
-    substitute = bpy.props.BoolProperty(
-        name="Substitute"
+    create_noise_keyframes = bpy.props.BoolProperty(
+        name="Create Noise Keyframes",
+        default=False
     )
 
-    object_to_substitute = bpy.props.PointerProperty(
-        name="Object to Substitute",
-        type=bpy.types.Object
-    )
+    subbed_meshes = []
 
     @classmethod
     def poll(cls, context):
@@ -302,6 +332,7 @@ class DividerOperator(bpy.types.Operator):
     def execute(self, context):
         main(context, self)
         return {'FINISHED'}
+
 
 class CreatePlaneOperator(bpy.types.Operator):
     bl_idname = "object.create_plane_operator"
@@ -316,7 +347,8 @@ class CreatePlaneOperator(bpy.types.Operator):
     def execute(self, context):
         bpy.ops.mesh.primitive_plane_add(size=5)
         return {'FINISHED'}
- 
+
+
 class DividerSettings(bpy.types.PropertyGroup):
     num_subdivisions = bpy.props.IntProperty(
         name="Num Subdivs",
@@ -364,13 +396,9 @@ class DividerSettings(bpy.types.PropertyGroup):
         default=250
     )
 
-    substitute = bpy.props.BoolProperty(
-        name="Substitute"
-    )
-
-    object_to_substitute = bpy.props.PointerProperty(
-        name="Object to Substitute",
-        type=bpy.types.Object
+    create_noise_keyframes = bpy.props.BoolProperty(
+        name="Create Noise Keyframes",
+        default=False
     )
 
 
