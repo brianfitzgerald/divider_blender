@@ -155,12 +155,16 @@ def create_offset_bmesh(context, obj, op, offset, frame_index):
             bm.faces.ensure_lookup_table()
             area = faces[x].calc_area()
             face = faces[x]
+            norm = face.normal
             range_for_face = distribution_points[x]
             if len(range_for_face) == 1:
                 continue
             r = bmesh.ops.extrude_discrete_faces(bm, faces=[face])
             extrude_height = random.uniform(
                 range_for_face[0], range_for_face[1])
+            extrude_vector = norm * \
+                extrude_height if op.use_normal_direction else Vector((
+                    0, 0, extrude_height))
             if extrude_style == "evenodd":
                 even = x % 2 == 0
                 if frame_index == 0:
@@ -168,8 +172,8 @@ def create_offset_bmesh(context, obj, op, offset, frame_index):
                 else:
                     extrude_height = 1 if even else 0.5
             verts_to_translate = r['faces'][0].verts
-            bmesh.ops.translate(bm, vec=Vector(
-                (0, 0, extrude_height)), verts=verts_to_translate)
+            bmesh.ops.translate(bm, vec=extrude_vector,
+                                verts=verts_to_translate)
     return bm
 
 
@@ -180,7 +184,6 @@ def clamp(value, lower, upper):
 def subdivide(bm, pv, parent_face, level, offset, all_faces, add_noise, noise_amount):
     if add_noise:
         noise_val = random.uniform(noise_amount * -1, noise_amount) * 0.5
-        print(noise_val)
         offset += noise_val
         offset = clamp(offset, 0, 1)
     pv_co = [vert.co for vert in pv]
@@ -272,6 +275,7 @@ class DividerPanel(bpy.types.Panel):
 
         layout.label(text="Extrude Style")
         layout.prop(scene.div_settings, "extrude_style", text="")
+        layout.prop(scene.div_settings, "use_normal_direction")
 
         layout.operator(CreatePlaneOperator.bl_idname)
 
@@ -285,6 +289,7 @@ class DividerPanel(bpy.types.Panel):
         op.keyframe_interval = scene.div_settings.keyframe_interval
         op.noise_amount = scene.div_settings.noise_amount
         op.num_keyframes = scene.div_settings.num_keyframes
+        op.use_normal_direction = scene.div_settings.use_normal_direction
 
 
 extrude_style_options = [
@@ -345,6 +350,11 @@ class DividerOperator(bpy.types.Operator):
 
     add_noise = bpy.props.BoolProperty(
         name="Add Noise",
+        default=False
+    )
+
+    use_normal_direction = bpy.props.BoolProperty(
+        name="Use Face Normals",
         default=False
     )
 
@@ -443,6 +453,11 @@ class DividerSettings(bpy.types.PropertyGroup):
     num_keyframes = bpy.props.IntProperty(
         name="Number of Keyframes",
         default=5
+    )
+
+    use_normal_direction = bpy.props.BoolProperty(
+        name="Extrude Along Normal",
+        default=False
     )
 
 
