@@ -57,34 +57,25 @@ def main(context, op):
     original_mesh.data = obj.data.copy()
     # Basis is the first frame of the subdiv mesh.
     basis = create_offset_bmesh(
-        context, obj, op.num_subdivisions, op.offset, op.extrude_style, 0)
+        context, obj, op, 0, False)
     basis.to_mesh(obj.data)
-
-    print(op.create_noise_keyframes, op.animate, op.create_keyframes)
-
-    if op.create_noise_keyframes and not (op.animate and op.create_keyframes):
-        ShowMessageBox(
-            "Please check 'Animate' and 'Create Keyframes' if you want to use noise keyframes!")
-        return
 
     shape_keys = []
     if op.animate:
-        num_frames = 2
+        num_frames = op.num_keyframes
         # Create bmeshes for animation
-        if op.create_noise_keyframes:
-            num_frames = 5
         for index in range(num_frames):
-            frame = create_shape_key_with_offset(context, op, obj, basis, original_mesh,
-                                                 index, num_frames, op.create_keyframes)
+            frame = create_shape_key_with_offset(
+                context, op, obj, basis, original_mesh, index, num_frames)
             shape_keys.append(frame)
 
-    looping = True
+    keyframe_interval = op.keyframe_interval
 
     if op.animate:
-        for frame in range(len(shape_keys) * 10):
+        for frame in range(len(shape_keys) * keyframe_interval):
             for index in range(len(shape_keys)):
-                if frame % 10 == 0:
-                    if frame / 10 == index:
+                if frame % keyframe_interval == 0:
+                    if frame / keyframe_interval == index:
                         shape_keys[index].value = 1
                     else:
                         shape_keys[index].value = 0
@@ -96,7 +87,7 @@ def main(context, op):
 # Create a new shape kaey starting with the original mesh data and generating a new subdiv with a specific offset.
 # This creates new geometry each time.
 # Apply only one keyframe at a time, as they're all relative to each other!
-def create_shape_key_with_offset(context, op, obj, basis, original_mesh, frame_index, total_frames, add_key):
+def create_shape_key_with_offset(context, op, obj, basis, original_mesh, frame_index, total_frames):
     #
     decoy = original_mesh.copy()
     decoy.data = original_mesh.data.copy()
@@ -107,9 +98,8 @@ def create_shape_key_with_offset(context, op, obj, basis, original_mesh, frame_i
         (op.animation_end_offset - op.offset)
     offset_amount = round(offset_amount, 2)
 
-    print('offset amt', offset_amount)
     offset_bmesh = create_offset_bmesh(
-        context, decoy, op.num_subdivisions, offset_amount, op.extrude_style, frame_index)
+        context, decoy, op, offset_amount, frame_index)
 
     basis.verts.ensure_lookup_table()
     offset_bmesh.verts.ensure_lookup_table()
@@ -126,14 +116,16 @@ def create_shape_key_with_offset(context, op, obj, basis, original_mesh, frame_i
     return frame
 
 
-def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, frame_index):
+# Creates a full mesh with a specific amount of offset.
+def create_offset_bmesh(context, obj, op, offset, frame_index):
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
     all_faces = []
     subdivide(bm, obj.data.vertices,
-              bm.faces[0], num_subdivisions, offset, all_faces)
+              bm.faces[0], op.num_subdivisions, offset, all_faces, op.add_noise, op.noise_amount)
+    extrude_style = op.extrude_style
     if extrude_style != 'flat':
         faces = bm.faces
         # Once faces are being extruded, this is the range they use to translate
@@ -181,7 +173,16 @@ def create_offset_bmesh(context, obj, num_subdivisions, offset, extrude_style, f
     return bm
 
 
-def subdivide(bm, pv, parent_face, level, offset, all_faces):
+def clamp(value, lower, upper):
+    return lower if value < lower else upper if value > upper else value
+
+
+def subdivide(bm, pv, parent_face, level, offset, all_faces, add_noise, noise_amount):
+    if add_noise:
+        noise_val = random.uniform(noise_amount * -1, noise_amount) * 0.5
+        print(noise_val)
+        offset += noise_val
+        offset = clamp(offset, 0, 1)
     pv_co = [vert.co for vert in pv]
     if level == 0:
         all_faces.append(parent_face)
@@ -238,17 +239,8 @@ def subdivide(bm, pv, parent_face, level, offset, all_faces):
             bm.verts.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
             nv = [new_verts[0], new_verts[1], new_verts[3], new_verts[2]]
-            subdivide(bm, nv, new_face, level-1, offset, all_faces)
-
-
-def rotate(l, n): return l[n:] + l[:n]
-
-
-def sort(verts):
-    sorted = []
-    for x in range(len(verts)):
-        sorted.append(verts[len(verts)-x-1])
-    return sorted
+            subdivide(bm, nv, new_face, level-1, offset,
+                      all_faces, add_noise, noise_amount)
 
 
 class DividerPanel(bpy.types.Panel):
@@ -268,13 +260,15 @@ class DividerPanel(bpy.types.Panel):
 
         layout.label(text="Animation")
         layout.prop(scene.div_settings, "animate")
-        layout.prop(scene.div_settings, "create_keyframes")
-        layout.prop(scene.div_settings, "start_keyframe")
-        layout.prop(scene.div_settings, "end_keyframe")
+        layout.prop(scene.div_settings, "keyframe_interval")
+        layout.prop(scene.div_settings, "num_keyframes")
         layout.prop(scene.div_settings,
                     "animation_end_offset")
         layout.prop(scene.div_settings,
-                    "create_noise_keyframes")
+                    "add_noise")
+
+        layout.prop(scene.div_settings,
+                    "noise_amount")
 
         layout.label(text="Extrude Style")
         layout.prop(scene.div_settings, "extrude_style", text="")
@@ -286,14 +280,16 @@ class DividerPanel(bpy.types.Panel):
         op.offset = scene.div_settings.offset
         op.animation_end_offset = scene.div_settings.animation_end_offset
         op.extrude_style = scene.div_settings.extrude_style
-        op.create_noise_keyframes = scene.div_settings.create_noise_keyframes
+        op.add_noise = scene.div_settings.add_noise
         op.animate = scene.div_settings.animate
-        op.create_keyframes = scene.div_settings.create_keyframes
+        op.keyframe_interval = scene.div_settings.keyframe_interval
+        op.noise_amount = scene.div_settings.noise_amount
+        op.num_keyframes = scene.div_settings.num_keyframes
 
 
 extrude_style_options = [
-    ('flat', 'Flat', 'No extrusion'),
     ('random', 'Random', 'Evently distributed random extrusion'),
+    ('flat', 'Flat', 'No extrusion'),
     ('hilly', 'Hilly', 'Larger sections are given a short extrusion'),
     ('towers', 'Towers', 'Even distribution with some made very tall'),
     ('ultratowers', 'Ultra Towers', 'Only occasional very tall extrusions'),
@@ -337,11 +333,6 @@ class DividerOperator(bpy.types.Operator):
         default=True
     )
 
-    create_keyframes = bpy.props.BoolProperty(
-        name="Create Keyframes",
-        default=True
-    )
-
     start_keyframe = bpy.props.IntProperty(
         name="Start Keyframe",
         default=0
@@ -352,9 +343,26 @@ class DividerOperator(bpy.types.Operator):
         default=250
     )
 
-    create_noise_keyframes = bpy.props.BoolProperty(
-        name="Create Noise Keyframes",
+    add_noise = bpy.props.BoolProperty(
+        name="Add Noise",
         default=False
+    )
+
+    noise_amount = bpy.props.FloatProperty(
+        name="Noise Amount",
+        default=0.2,
+        min=0,
+        max=1
+    )
+
+    keyframe_interval = bpy.props.IntProperty(
+        name="Keyframe Interval",
+        default=20
+    )
+
+    num_keyframes = bpy.props.IntProperty(
+        name="# of Keyframes",
+        default=5
     )
 
     subbed_meshes = []
@@ -415,24 +423,26 @@ class DividerSettings(bpy.types.PropertyGroup):
         default=True
     )
 
-    create_keyframes = bpy.props.BoolProperty(
-        name="Create Keyframes",
-        default=True
-    )
-
-    start_keyframe = bpy.props.IntProperty(
-        name="Start Keyframe",
-        default=0
-    )
-
-    end_keyframe = bpy.props.IntProperty(
-        name="End Keyframe",
-        default=250
-    )
-
-    create_noise_keyframes = bpy.props.BoolProperty(
-        name="Create Noise Keyframes",
+    add_noise = bpy.props.BoolProperty(
+        name="Add Noise",
         default=False
+    )
+
+    noise_amount = bpy.props.FloatProperty(
+        name="Noise Amount",
+        default=0.2,
+        min=0,
+        max=1
+    )
+
+    keyframe_interval = bpy.props.IntProperty(
+        name="Keyframe Interval",
+        default=20
+    )
+
+    num_keyframes = bpy.props.IntProperty(
+        name="Number of Keyframes",
+        default=5
     )
 
 
