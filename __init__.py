@@ -51,27 +51,29 @@ def main(context, op):
         return
 
     op.subbed_meshes.append(obj)
-
-    # Important that this is not modified as it's used for each interpolation.
-    original_mesh = obj.copy()
-    original_mesh.data = obj.data.copy()
-    # Basis is the first frame of the subdiv mesh.
-    basis = create_offset_bmesh(
-        context, obj, op, 0, False)
-    basis.to_mesh(obj.data)
-
     shape_keys = []
     if op.animate:
+        # Important that this is not modified as it's used for each interpolation.
+        original_mesh = obj.copy()
+        original_mesh.data = obj.data.copy()
+        # Basis is the first frame of the subdiv mesh.
+        basis = create_offset_bmesh(
+            context, obj, op, 0, False)
+        basis.to_mesh(obj.data)
         num_frames = op.num_keyframes
         # Create bmeshes for animation
         for index in range(num_frames):
             frame = create_shape_key_with_offset(
                 context, op, obj, basis, original_mesh, index, num_frames)
             shape_keys.append(frame)
-
-    keyframe_interval = op.keyframe_interval
+    else:
+        offset_mesh = create_offset_bmesh(context, obj, op, op.offset, 0)
+        offset_mesh.to_mesh(obj.data)
+        bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+        return
 
     if op.animate:
+        keyframe_interval = op.keyframe_interval
         for frame in range(len(shape_keys) * keyframe_interval):
             for index in range(len(shape_keys)):
                 if frame % keyframe_interval == 0:
@@ -79,9 +81,13 @@ def main(context, op):
                         shape_keys[index].value = 1
                     else:
                         shape_keys[index].value = 0
-                    shape_keys[index].keyframe_insert("value", frame=frame)
+                    frame_val = frame + 1 if frame == 0 else frame
+                    shape_keys[index].keyframe_insert("value", frame=frame_val)
+        bpy.context.scene.frame_start = 1
+        bpy.context.scene.frame_end = (
+            len(shape_keys) - 1) * keyframe_interval
 
-    bpy.data.objects.remove(original_mesh)
+        bpy.data.objects.remove(original_mesh)
 
 
 # Create a new shape kaey starting with the original mesh data and generating a new subdiv with a specific offset.
